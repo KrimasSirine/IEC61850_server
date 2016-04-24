@@ -69,8 +69,7 @@ svUpdateListener (SVSubscriber subscriber, void* parameter, SVClientASDU asdu)
         //printf("   Voltage_PhaseA: %f\n", vA[indice] );
         //printf("   Voltage_PhaseB: %f\n", vB[indice] );
         //printf("   Voltage_PhaseC: %f\n", vC[smpcnt-1] );
-        //printf("   Neutral_To_Ground_Voltage: %f\n", nV);
-        
+        //printf("   Neutral_To_Ground_Voltage: %f\n", nV);       
 	}
 	
 	else 
