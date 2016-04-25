@@ -2,10 +2,12 @@
 #include <signal.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <pthread.h>
 #include <time.h>
 #include <math.h>
 #include "sv_subscriber.h"
 #include "hal_thread.h"
+
 
 /* Include the generated header with the model access handles */
 #include "static_model.h"
@@ -31,9 +33,21 @@ int i;
 
 int smpcnt, indice;
 
-float cA[80] = { 0 }, cB[80] = { 0 }, cC[80] = { 0 }, nC, vA[80] = { 0 }, vB[80] = { 0 }, vC[80] = { 0 }, nV;
+int argc;
+   
+int ret1, ret2;
+
+char** argv;
+
+float cA[80] = {0} , cB[80] = {0} , cC[80] = {0} , nC, vA[80] = {0}, vB[80] = {0}, vC[80] = {0}, nV;
 
 float activePower = 0, pA = 0, pB = 0, pC = 0;
+
+SVReceiver receiver;
+
+IedServer iedServer;
+
+pthread_t thread;
 
 /* Callback handler for received SV messages */
 static void
@@ -50,7 +64,7 @@ svUpdateListener (SVSubscriber subscriber, void* parameter, SVClientASDU asdu)
     printf("  confRev: %u\n", SVClientASDU_getConfRev(asdu));
     
 	indice = smpcnt - 80* ((smpcnt-1)/80)-1;
-
+	
 
 	if (SVClientASDU_getDataSize(asdu) >= 8) 
 	{    	
@@ -79,10 +93,10 @@ svUpdateListener (SVSubscriber subscriber, void* parameter, SVClientASDU asdu)
   
 }
 
-int 
-main(int argc, char** argv)
+void *create_sv_subsciber()
 {
-    SVReceiver receiver = SVReceiver_create();
+	
+	receiver = SVReceiver_create();
 
     if (argc > 1) 
     {
@@ -96,7 +110,6 @@ main(int argc, char** argv)
      
         SVReceiver_setInterfaceId(receiver, "eth1");
     }
-    
     /* Create a subscriber listening to SV messages with APPID 4000h */
     SVSubscriber subscriber = SVSubscriber_create(NULL, 0x4000);
   
@@ -108,44 +121,15 @@ main(int argc, char** argv)
  
     /* Start listening to SV messages - starts a new receiver background thread */
     SVReceiver_start(receiver);
-
-    signal(SIGINT, sigint_handlersmv);
     
-	float activePower =0.f;
-	int i=0;
-    while (runningsmv) 
-	{
-		
-		usleep(100);
-       //if ((smpcnt % 80) == 0) 
-       // {
-			
-		//printf("PA  : %f\n",pA);
-		/*printf("PB  : %f\n",pB);
-		printf("PC  : %f\n",pC);
-		printf("activePower : %f\n", activePower );*/
-		//}
-		/*if (smpcnt == 80)
-        {
-			runningsmv = 0;
-		}*/
-    }
-    /*for (i=0; i<81; i++)
-    {
-	pA = pA + cA[i]*vA[i];
-	pB = pB + cB[i]*vB[i];
-	pC = pC + cC[i]*vC[i];
-	activePower =activePower + cA[i]*vA[i] + cB[i]*vB[i] + cC[i]*vC[i];	
-	}*/
+	pthread_exit(NULL); 
 	
-    /* Stop listening to SV messages */
-    SVReceiver_stop(receiver);
-    /* Cleanup and free resources */
-    SVReceiver_destroy(receiver);
-    
-    //--------------------------------------------------------***************************-----------------------------------------//
-    
-   IedServer iedServer = IedServer_create(&iedModel);
+
+}
+
+void *create_ied_server()
+{
+	iedServer = IedServer_create(&iedModel);
 
     // TODO get stored values from persistent storage
 
@@ -154,62 +138,91 @@ main(int argc, char** argv)
     /* MMS server will be instructed to start listening to client connections. */
     IedServer_start(iedServer, 102);
 
-    if (!IedServer_isRunning(iedServer)) {
+    if (!IedServer_isRunning(iedServer))
+	{
         printf("Starting server failed! Exit.\n");
         IedServer_destroy(iedServer);
         exit(-1);
     }
-   
-    for (i=0; i<80; i++)
-			{   
-				printf("cA[%d] = %f\n", i, cA[i]); 
-				pA = pA + cA[i]*vA[i];
-				pB = pB + cB[i]*vB[i];
-				pC = pC + cC[i]*vC[i];
-				activePower =activePower + cA[i]*vA[i] + cB[i]*vB[i] + cC[i]*vC[i];	
-			}
-			activePower = (float)(activePower/80);
-		pA = (float)pA/80;
-		pB = (float)pB/80;
-		pC = (float)pC/80;
-    
-    
+	
 
-    MmsValue* pAValue = MmsValue_newFloat(pA);
-    MmsValue* pBValue = MmsValue_newFloat(pB);
-    MmsValue* pCValue = MmsValue_newFloat(pC);
-    MmsValue* powerValue = MmsValue_newFloat(activePower);
-	MmsValue* timeval = MmsValue_newUtcTime(time(NULL));
-    
+		
     running = 1;
     signal(SIGINT, sigint_handler);
     
-    while (running) {
+   while (running) 
+    {
+		pA = 0; 
+		pB = 0; 
+		pC = 0; 
+		activePower = 0;
 		
-		
-		
-	MmsValue_setUtcTime(timeval, time(NULL));
+		for (i=0; i<80; i++)
+		{   
+			printf("cA[%d] = %f\n", i, cA[i]); 
+			pA = pA + cA[i]*vA[i];
+			pB = pB + cB[i]*vB[i];
+			pC = pC + cC[i]*vC[i];
+			activePower =activePower + cA[i]*vA[i] + cB[i]*vB[i] + cC[i]*vC[i];	
+		}
+		printf("**************************----------------------------**********************\n");
+		activePower = (float)(activePower/80);
+		pA = (float)pA/80;	
+		pB = (float)pB/80;
+		pC = (float)pC/80;
+		 
+		   
+		MmsValue* pAValue = MmsValue_newFloat(pA);
+		MmsValue* pBValue = MmsValue_newFloat(pB);
+		MmsValue* pCValue = MmsValue_newFloat(pC);
+		MmsValue* powerValue = MmsValue_newFloat(activePower);
+		MmsValue* timeval = MmsValue_newUtcTime(time(NULL));
+			
+		MmsValue_setUtcTime(timeval, time(NULL));
 	
-    IedServer_lockDataModel(iedServer);
+		IedServer_lockDataModel(iedServer);
 
-    IedServer_updateAttributeValue(iedServer, IEDMODEL_Inverter_MMXU1_W_phsA_cVal_mag_f, pAValue );
-    IedServer_updateAttributeValue(iedServer, IEDMODEL_Inverter_MMXU1_W_phsB_cVal_mag_f, pBValue );
-    IedServer_updateAttributeValue(iedServer, IEDMODEL_Inverter_MMXU1_W_phsC_cVal_mag_f, pCValue );   		
-	IedServer_updateAttributeValue(iedServer, IEDMODEL_Inverter_MMXU1_TotW_mag_f, powerValue );
-	IedServer_updateAttributeValue(iedServer, IEDMODEL_Inverter_MMXU1_TotW_t, timeval);
+		IedServer_updateAttributeValue(iedServer, IEDMODEL_Inverter_MMXU1_W_phsA_cVal_mag_f, pAValue );
+		IedServer_updateAttributeValue(iedServer, IEDMODEL_Inverter_MMXU1_W_phsB_cVal_mag_f, pBValue );
+		IedServer_updateAttributeValue(iedServer, IEDMODEL_Inverter_MMXU1_W_phsC_cVal_mag_f, pCValue );   		
+		IedServer_updateAttributeValue(iedServer, IEDMODEL_Inverter_MMXU1_TotW_mag_f, powerValue );
+		IedServer_updateAttributeValue(iedServer, IEDMODEL_Inverter_MMXU1_TotW_t, timeval);
 
-    IedServer_unlockDataModel(iedServer);
+		IedServer_unlockDataModel(iedServer);
         
-    MmsValue_setFloat(powerValue, activePower) ;
+		MmsValue_setFloat(powerValue, activePower) ;
     
-    Thread_sleep(500);
-}
+		Thread_sleep(500);
+	}
 
-    //stop MMS server - close TCP server socket and all client sockets //
+	//stop MMS server - close TCP server socket and all client sockets //
     IedServer_stop(iedServer);
 
     // Cleanup - free all resources //
     IedServer_destroy(iedServer);
+    
+	/* Stop listening to SV messages */
+    SVReceiver_stop(receiver);
+    /* Cleanup and free resources */
+    SVReceiver_destroy(receiver);
+}
+int 
+main(int argc, char** argv)
+{
+	
 
-    return 0;
-} /* main() */
+    // make threads
+    ret1 = pthread_create(&thread, NULL, create_sv_subsciber, NULL);
+	if (ret1)
+	{
+         printf("ERROR; return code from pthread_create() is %d\n", ret1);
+         exit(-1);
+	}
+	create_ied_server();
+	pthread_exit(NULL);
+	//pthread_join(thread1,NULL);
+	//pthread_join(thread2,NULL);
+	//create_sv_subsciber();	
+	
+
+} 
